@@ -1,0 +1,205 @@
+#
+#                █████
+#               ░░███
+#       ██████  ███████    ██████
+#      ███░░███░░░███░    ░░░░░███
+#     ░███ ░███  ░███      ███████
+#     ░███ ░███  ░███ ███ ███░░███
+#     ░░██████   ░░█████ ░░████████
+#      ░░░░░░     ░░░░░   ░░░░░░░░
+#
+#   Copyright (C) 2026 — 2026, Ota. All Rights Reserved.
+#
+#   DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+#
+#   Licensed under the Apache License, Version 2.0. See LICENSE for the full license text.
+#   You may not use this file except in compliance with that License.
+#   Unless required by applicable law or agreed to in writing, software distributed under the
+#   License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND,
+#   either express or implied. See the License for the specific language governing permissions
+#   and limitations under the License.
+#
+#   If you need additional information or have any questions, please email: os@ota.run
+
+version: 1
+project:
+  name: casa
+  description: >
+    Narrow pressure slice for CASA's documented Docker Compose development flow, keeping app-level
+    database reset distinct from broad Compose teardown.
+execution:
+  default_context: host
+  contexts:
+    host:
+      backend: native
+      requirements:
+        tools:
+          docker: "*"
+services:
+  database:
+    manager:
+      kind: compose
+      name: casa
+      file: docker-compose.yml
+      service: database
+    endpoints:
+      host:
+        address: 127.0.0.1
+        port: 5435
+    readiness:
+      kind: tcp
+      from: host
+tasks:
+  stack:up:
+    context: host
+    description: Start the documented CASA Docker Compose services
+    notes: Mirrors the ongoing development command `docker compose up -d`.
+    command:
+      exe: docker
+      args:
+        - compose
+        - up
+        - -d
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+        - postgres
+  deps:ruby:
+    context: host
+    description: Install Ruby dependencies in the documented one-off web container
+    notes: Mirrors the manual setup command `docker compose run --rm web bundle install`.
+    command:
+      exe: docker
+      args:
+        - compose
+        - run
+        - --rm
+        - web
+        - bundle
+        - install
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+  db:reset:
+    context: host
+    description: Reset the CASA development and test databases in the documented web container
+    notes: >
+      Mirrors the manual setup command `docker compose run --rm web rails db:reset`, which is
+      application-level database reset rather than Compose volume ownership.
+    command:
+      exe: docker
+      args:
+        - compose
+        - run
+        - --rm
+        - web
+        - rails
+        - db:reset
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+        - postgres
+    safe_for_agent: false
+  deps:node:
+    context: host
+    description: Install JavaScript dependencies in the documented one-off web container
+    notes: Mirrors the manual setup command `docker compose run --rm web npm install`.
+    command:
+      exe: docker
+      args:
+        - compose
+        - run
+        - --rm
+        - web
+        - npm
+        - install
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+  assets:build:
+    context: host
+    description: Build the documented JavaScript assets in the one-off web container
+    notes: Mirrors the manual setup command `docker compose run --rm web npm run build`.
+    command:
+      exe: docker
+      args:
+        - compose
+        - run
+        - --rm
+        - web
+        - npm
+        - run
+        - build
+    depends_on:
+      - deps:node
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+  assets:build:css:
+    context: host
+    description: Build the documented CSS assets in the one-off web container
+    notes: Mirrors the manual setup command `docker compose run --rm web npm run build:css`.
+    command:
+      exe: docker
+      args:
+        - compose
+        - run
+        - --rm
+        - web
+        - npm
+        - run
+        - build:css
+    depends_on:
+      - deps:node
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+  stack:clean:
+    context: host
+    description: Tear down CASA containers, volumes, and networks for a documented clean slate
+    notes: >
+      Mirrors the manual setup command `docker compose down -v`. This is intentionally modeled as
+      broad teardown, not as service-volume reset, because the repo documents it as full stack
+      cleanup.
+    command:
+      exe: docker
+      args:
+        - compose
+        - down
+        - -v
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+        - postgres
+    safe_for_agent: false
+workflows:
+  default: local-docker
+  local-docker:
+    intent: local_development
+    description: Documented CASA Docker Compose setup path for local development
+    prepare:
+      task: stack:up
+metadata:
+  ota:
+    minimum_version: "1.6.22"
