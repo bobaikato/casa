@@ -36,6 +36,19 @@ execution:
         tools:
           docker: "*"
 services:
+  web:
+    manager:
+      kind: compose
+      name: casa
+      file: docker-compose.yml
+      service: web
+    endpoints:
+      host:
+        address: 127.0.0.1
+        port: 3000
+    readiness:
+      kind: tcp
+      from: host
   database:
     manager:
       kind: compose
@@ -60,6 +73,10 @@ tasks:
         - compose
         - up
         - -d
+    depends_on:
+      - db:reset
+      - assets:build
+      - assets:build:css
     requirements:
       tools:
         docker: "*"
@@ -101,6 +118,8 @@ tasks:
         - web
         - rails
         - db:reset
+    depends_on:
+      - deps:ruby
     requirements:
       tools:
         docker: "*"
@@ -197,7 +216,9 @@ workflows:
   default: local-docker
   local-docker:
     intent: local_development
-    description: Documented CASA Docker Compose setup path for local development
+    description: >
+      Documented CASA Docker Compose setup path for local development, including dependency
+      hydration, database reset, asset build, and service startup.
     prepare:
       task: stack:up
 metadata:
