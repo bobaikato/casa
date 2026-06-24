@@ -67,6 +67,12 @@ tasks:
     context: host
     description: Start the documented CASA Docker Compose services
     notes: Mirrors the ongoing development command `docker compose up -d`.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
     command:
       exe: docker
       args:
@@ -88,6 +94,12 @@ tasks:
     context: host
     description: Install Ruby dependencies in the documented one-off web container
     notes: Mirrors the manual setup command `docker compose run --rm web bundle install`.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
     command:
       exe: docker
       args:
@@ -109,6 +121,12 @@ tasks:
     notes: >
       Mirrors the manual setup command `docker compose run --rm web rails db:reset`, which is
       application-level database reset rather than Compose volume ownership.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
     command:
       exe: docker
       args:
@@ -132,6 +150,12 @@ tasks:
     context: host
     description: Install JavaScript dependencies in the documented one-off web container
     notes: Mirrors the manual setup command `docker compose run --rm web npm install`.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
     command:
       exe: docker
       args:
@@ -151,6 +175,12 @@ tasks:
     context: host
     description: Build the documented JavaScript assets in the one-off web container
     notes: Mirrors the manual setup command `docker compose run --rm web npm run build`.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
     command:
       exe: docker
       args:
@@ -173,6 +203,12 @@ tasks:
     context: host
     description: Build the documented CSS assets in the one-off web container
     notes: Mirrors the manual setup command `docker compose run --rm web npm run build:css`.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
     command:
       exe: docker
       args:
@@ -198,6 +234,12 @@ tasks:
       Mirrors the manual setup command `docker compose down -v`. This is intentionally modeled as
       broad teardown, not as service-volume reset, because the repo documents it as full stack
       cleanup.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
     command:
       exe: docker
       args:
