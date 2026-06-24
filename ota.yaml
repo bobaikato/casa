@@ -263,6 +263,25 @@ workflows:
       hydration, database reset, asset build, and service startup.
     prepare:
       task: stack:up
+agent:
+  posture: readiness_strict
+  entrypoint: stack:up
+  default_task: stack:up
+  protected_paths:
+    - .github/workflows
+    - docker-compose.yml
+    - ota.yaml
+  bootstrap:
+    ota:
+      note: Install ota only when missing so contributors and agents can use the readiness workflows declared here.
+      source:
+        kind: branch
+        branch: 1.6.22-implementation
+  notes: |
+    This contract intentionally scopes CASA to the documented Docker Compose development flow.
+    Review `ota tasks --use` before execution; the modeled tasks mutate Docker, database, or asset-build state
+    and are not declared agent-safe by default.
+    Use `ota up --workflow local-docker` for the documented setup path.
 metadata:
   ota:
     minimum_version: "1.6.22"
