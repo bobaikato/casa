@@ -73,12 +73,9 @@ tasks:
           files:
             - docker-compose.yml
           project_name: casa
-    command:
-      exe: docker
-      args:
-        - compose
-        - up
-        - -d
+    compose:
+      kind: up
+      detach: true
     depends_on:
       - db:reset
       - assets:build
@@ -240,12 +237,9 @@ tasks:
           files:
             - docker-compose.yml
           project_name: casa
-    command:
-      exe: docker
-      args:
-        - compose
-        - down
-        - -v
+    compose:
+      kind: down
+      remove_volumes: true
     requirements:
       tools:
         docker: "*"
