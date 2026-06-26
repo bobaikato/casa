@@ -62,7 +62,41 @@ services:
     readiness:
       kind: tcp
       from: host
+  selenium_chrome:
+    manager:
+      kind: compose
+      name: casa
+      file: docker-compose.yml
+      service: selenium_chrome
+    endpoints:
+      host:
+        address: 127.0.0.1
+        port: 5900
+    readiness:
+      kind: tcp
+      from: host
 tasks:
+  stack:build:
+    context: host
+    description: Build the documented CASA Docker Compose images
+    notes: >
+      Mirrors the documented initial setup command `docker compose build`, which prepares the
+      service images before one-off `docker compose run --rm web ...` setup lanes depend on them.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
+    compose:
+      kind: build
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+    safe_for_agent: false
   stack:up:
     context: host
     description: Start the documented CASA Docker Compose services
@@ -87,29 +121,155 @@ tasks:
       external_state:
         - docker
         - postgres
-  deps:ruby:
+  web:restart:
     context: host
-    description: Install Ruby dependencies in the documented one-off web container
-    notes: Mirrors the manual setup command `docker compose run --rm web bundle install`.
+    description: Restart the documented CASA web service
+    notes: Mirrors the documented ongoing-development command `docker compose restart web`.
     adapter_inputs:
       overlays:
         compose:
           files:
             - docker-compose.yml
           project_name: casa
-    command:
-      exe: docker
-      args:
-        - compose
-        - run
-        - --rm
+    compose:
+      kind: restart
+      services:
         - web
-        - bundle
-        - install
+    depends_on:
+      - stack:up
+    requires_services:
+      - web
     requirements:
       tools:
         docker: "*"
     effects:
+      external_state:
+        - docker
+  web:recreate:
+    context: host
+    description: Force-recreate the documented CASA web container after an image rebuild
+    notes: >
+      Mirrors the documented ongoing-development command `docker compose up -d --force-recreate
+      web` after rebuilding the image.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
+    compose:
+      kind: up
+      detach: true
+      force_recreate: true
+      services:
+        - web
+    depends_on:
+      - stack:build
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+  web:stop:
+    context: host
+    description: Stop the documented CASA web service before cleanup
+    notes: Mirrors the documented ongoing-development command `docker compose stop web`.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
+    compose:
+      kind: stop
+      services:
+        - web
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+  web:logs:
+    context: host
+    description: Follow the documented CASA web service logs
+    notes: Mirrors the documented ongoing-development command `docker compose logs -f web`.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
+    compose:
+      kind: logs
+      follow: true
+      services:
+        - web
+    depends_on:
+      - stack:up
+    requires_services:
+      - web
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+    safe_for_agent: false
+  web:rm:force:
+    context: host
+    description: Force-remove the documented stopped CASA web container
+    notes: >
+      Mirrors the documented ongoing-development command `docker compose rm -f web`.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
+    compose:
+      kind: rm
+      force: true
+      services:
+        - web
+    depends_on:
+      - web:stop
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+    safe_for_agent: false
+  deps:ruby:
+    context: host
+    description: Hydrate Ruby dependencies through the documented one-off web container
+    notes: >
+      Mirrors the manual setup command `docker compose run --rm web bundle install`, while keeping
+      the durable bundle cache truthful as Compose-volume-owned state instead of faking repo-local
+      writes.
+    prepare:
+      kind: dependency_hydration
+      medium: package_dependencies
+      source:
+        kind: bundler
+        cwd: .
+        compose:
+          kind: run
+          service: web
+          workdir: /usr/src/app
+          rm: true
+    requirements:
+      tools:
+        docker: "*"
+    depends_on:
+      - stack:build
+    effects:
+      adapter_state:
+        - compose_volume:bundle_data
+      network: true
+      network_kind: dependency_hydration
       external_state:
         - docker
   db:reset:
@@ -124,14 +284,12 @@ tasks:
           files:
             - docker-compose.yml
           project_name: casa
-    command:
-      exe: docker
+    compose:
+      kind: run
+      service: web
+      rm: true
+      exe: rails
       args:
-        - compose
-        - run
-        - --rm
-        - web
-        - rails
         - db:reset
     depends_on:
       - deps:ruby
@@ -145,27 +303,34 @@ tasks:
     safe_for_agent: false
   deps:node:
     context: host
-    description: Install JavaScript dependencies in the documented one-off web container
-    notes: Mirrors the manual setup command `docker compose run --rm web npm install`.
-    adapter_inputs:
-      overlays:
+    description: Hydrate JavaScript dependencies through the documented one-off web container
+    notes: >
+      Mirrors the manual setup command `docker compose run --rm web npm install`, while keeping
+      the durable `node_modules` cache truthful as Compose-volume-owned state instead of fake repo
+      writes.
+    prepare:
+      kind: dependency_hydration
+      medium: package_dependencies
+      source:
+        kind: node_package_manager
+        cwd: .
+        manager: npm
+        mode: install
         compose:
-          files:
-            - docker-compose.yml
-          project_name: casa
-    command:
-      exe: docker
-      args:
-        - compose
-        - run
-        - --rm
-        - web
-        - npm
-        - install
+          kind: run
+          service: web
+          workdir: /usr/src/app
+          rm: true
     requirements:
       tools:
         docker: "*"
+    depends_on:
+      - stack:build
     effects:
+      adapter_state:
+        - compose_volume:node_modules
+      network: true
+      network_kind: dependency_hydration
       external_state:
         - docker
   assets:build:
@@ -178,14 +343,12 @@ tasks:
           files:
             - docker-compose.yml
           project_name: casa
-    command:
-      exe: docker
+    compose:
+      kind: run
+      service: web
+      rm: true
+      exe: npm
       args:
-        - compose
-        - run
-        - --rm
-        - web
-        - npm
         - run
         - build
     depends_on:
@@ -206,14 +369,12 @@ tasks:
           files:
             - docker-compose.yml
           project_name: casa
-    command:
-      exe: docker
+    compose:
+      kind: run
+      service: web
+      rm: true
+      exe: npm
       args:
-        - compose
-        - run
-        - --rm
-        - web
-        - npm
         - run
         - build:css
     depends_on:
@@ -224,6 +385,122 @@ tasks:
     effects:
       external_state:
         - docker
+  spec:test:
+    context: host
+    description: Run the documented RSpec suite inside the running web container
+    notes: >
+      Mirrors the documented Docker command `docker compose exec web rspec spec`. JS/system tests
+      in this lane rely on the Compose-owned `selenium_chrome` service and write failure
+      screenshots to `tmp/screenshots`.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
+    compose:
+      kind: exec
+      service: web
+      exe: rspec
+      args:
+        - spec
+    depends_on:
+      - stack:up
+    requires_services:
+      - selenium_chrome
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      writes:
+        - tmp/screenshots
+      external_state:
+        - docker
+    safe_for_agent: false
+  web:shell:
+    context: host
+    description: Attach to an interactive shell inside the running web container
+    notes: Mirrors the documented Docker command `docker compose exec web bash`.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
+    compose:
+      kind: attach
+      service: web
+      exe: bash
+    depends_on:
+      - stack:up
+    requires_services:
+      - web
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+    safe_for_agent: false
+  rails:console:
+    context: host
+    description: Attach to the documented interactive Rails console inside the running web container
+    notes: Mirrors the documented Docker command `docker compose exec web rails c`.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
+    compose:
+      kind: attach
+      service: web
+      exe: rails
+      args:
+        - c
+    depends_on:
+      - stack:up
+    requires_services:
+      - web
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+        - postgres
+    safe_for_agent: false
+  db:shell:
+    context: host
+    description: Attach to the documented interactive Postgres shell inside the running database container
+    notes: Mirrors the documented Docker command `docker compose exec database psql -h database -Upostgres casa_development`.
+    adapter_inputs:
+      overlays:
+        compose:
+          files:
+            - docker-compose.yml
+          project_name: casa
+    compose:
+      kind: attach
+      service: database
+      exe: psql
+      args:
+        - -h
+        - database
+        - -Upostgres
+        - casa_development
+    depends_on:
+      - stack:up
+    requires_services:
+      - database
+    requirements:
+      tools:
+        docker: "*"
+    effects:
+      external_state:
+        - docker
+        - postgres
+    safe_for_agent: false
   stack:clean:
     context: host
     description: Tear down CASA containers, volumes, and networks for a documented clean slate
@@ -257,6 +534,8 @@ workflows:
       hydration, database reset, asset build, and service startup.
     prepare:
       task: stack:up
+    attach:
+      task: web:shell
 agent:
   posture: readiness_strict
   entrypoint: stack:up
@@ -269,8 +548,8 @@ agent:
     ota:
       note: Install ota only when missing so contributors and agents can use the readiness workflows declared here.
       source:
-        kind: git_rev
-        rev: f78c7f1cd4fdae0c92be06d9834e2b3c9957beee
+        kind: branch
+        branch: 1.6.22-implementation
   notes: |
     This contract intentionally scopes CASA to the documented Docker Compose development flow.
     Review `ota tasks --use` before execution; the modeled tasks mutate Docker, database, or asset-build state
